@@ -1,0 +1,3 @@
+#!/bin/bash
+
+mosquitto_pub -d -h m11.cloudmqtt.com -p 19873 -u prcegtgc -P 7frPa1U_VXqA -t hello -m Hi
