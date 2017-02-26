@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# rftoq.py  -  Capture any RF messages and push them to MQTT queue
+# rftoqueue.py  -  Capture any RF messages and push them to MQTT queue
 
  
 # ToDo
@@ -141,7 +141,7 @@ def run( client ):
     time.sleep(SLEEP_SECONDS)
  
 try:
-    client = mqtt.Client("rftoq")
+    client = mqtt.Client("rftoqueue")
     run(client)
 except KeyboardInterrupt:
     print "Keyboard Interrupt..."
