@@ -8,59 +8,51 @@
 import os
 import sys
 import time
-#from datetime import datetime
-#import pytz
-#import tzlocal
 import RPi.GPIO as GPIO
 import paho.mqtt.client as mqtt
+import ConfigParser
 
 from nrf24 import NRF24
 
-##STATUSCAKE_URL="https://push.statuscake.com/?PK=50bc5a406146489&TestID=510385"
-##PUSHMON_URL="http://ping.pushmon.com/pushmon/ping/"
-##PUSHMON_ID="WmpnHI"
-##PUSHINGBOX_URL="http://api.pushingbox.com/pushingbox"
-##PUSHINGBOX_ID="vF6098C58E4A4D96"
-#GROVESTREAMS_URL = "http://grovestreams.com/api/feed?asPut&api_key=521dfde4-e9e2-36b6-bf96-18242254873f"
-
-#DEFAULT_API_KEY = "IjPjyGRBNX4215uvu7sAB86NBjCtklQByFAIb1VoJT2TUeXF"
-#DEFAULT_FEED_ID = "1785749146"
-
-#Q_BROKER="m11.cloudmqtt.com"
-#Q_PORT=19873
-#Q_USER="prcegtgc"
-#Q_PSWD="7frPa1U_VXqA"
-Q_BROKER="127.0.0.1"
-Q_PORT=1883
-Q_TOPIC="hello"
-
+# ---- Globals ----
 IsConnected=False
 IsCnxnErr=False
 
 ##  RF Read Code
 pipes = [[0xF0, 0xF0, 0xF0, 0xF0, 0xE1], [0xF0, 0xF0, 0xF0, 0xF0, 0xD1]]
-CE_PIN_       = 25  #18
-IRQ_PIN_      = 23
-RF_CHANNEL    = 76
-PAYLOAD_SIZE  = 21
 
 SLEEP_SECONDS = 1 
+config = None
 
 radio = NRF24()
+
+# ----------------------------------------------------------------
+def getConfigExt( configSysIn, sectionIn, optionIn, defaultIn=None ):
+    optionOut=defaultIn
+    if( configSysIn.has_option( sectionIn, optionIn)):
+        optionOut = configSysIn.get(sectionIn, optionIn)
+    return optionOut
+
+def getConfigExtBool( configSysIn, sectionIn, optionIn, defaultIn=False ):
+    optionOut=defaultIn
+    if( configSysIn.has_option( sectionIn, optionIn)):
+        optionOut = configSysIn.getboolean(sectionIn, optionIn)
+    return optionOut
+
 
 def init_GPIO():
     GPIO.setmode(GPIO.BCM)
 
 def initRadioReceive():
-    radio.begin(0, 0, CE_PIN_, IRQ_PIN_)
+    radio.begin(0, 0, config.getint("DEFAULT", "CE_PIN_"), config.getint("DEFAULT", "IRQ_PIN_") )
 
     #radio.setDataRate(NRF24.BR_1MBPS)
     radio.setDataRate(NRF24.BR_250KBPS)
     radio.setPALevel(NRF24.PA_MAX)
-    radio.setChannel(RF_CHANNEL)
+    radio.setChannel( config.getint("DEFAULT", "RF_CHANNEL") )
     radio.setRetries(15,15)
     radio.setAutoAck(0)
-    radio.setPayloadSize(PAYLOAD_SIZE)
+    radio.setPayloadSize(config.getint("DEFAULT", "PAYLOAD_SIZE"))
     ##radio.enableDynamicPayloads()
 
     radio.openWritingPipe(pipes[0])
@@ -103,10 +95,14 @@ def run( client ):
   client.on_publish = on_publish
   client.on_connect = on_connect
   client.on_disconnect = on_disconnect
-#  client.on_log = on_log
-#  client.username_pw_set(Q_USER, Q_PSWD)
+  if( getConfigExtBool(config, "DEFAULT", 'qlog_enable') ):
+      client.on_log = on_log
 
-  client.connect(Q_BROKER, Q_PORT, keepalive=60)
+  if( getConfigExt(config, "DEFAULT", 'user', None) and getConfigExt(config, "DEFAULT", 'pswd', None) ):
+      print( "Setting User and pswd")
+      client.username_pw_set( config.get("DEFAULT", 'user'), config.get("DEFAULT", 'pswd') )
+
+  client.connect(config.get("DEFAULT", 'broker'), config.get("DEFAULT", 'port'), 60)
   client.loop_start()
 
   retry=0
@@ -133,15 +129,29 @@ def run( client ):
 
         if( not IsConnected ):
             print( "ERROR: RF Msg received; NO CONNECTION to queue" )
-        client.publish(Q_TOPIC,recv_string, 1)
+        else:
+            client.publish(Q_TOPIC,recv_string, 1)
 
     radio.startListening()
 
     sys.stdout.flush()
     time.sleep(SLEEP_SECONDS)
  
+# -------------------------------------
+
+client = mqtt.Client("rftoqueue")
+
 try:
-    client = mqtt.Client("rftoqueue")
+    configFile=os.path.splitext(__file__)[0]+".conf"
+    if( not os.path.isfile( configFile )):
+        print( "Config file [%s] was not found.  Exiting" ) % configFile
+        exit()
+
+    config = ConfigParser.SafeConfigParser()
+    config.read(configFile)
+    if( getConfigExtBool(config, "DEFAULT", 'debug') ):
+        print("Using config file [%s]") % configFile
+
     run(client)
 except KeyboardInterrupt:
     print "Keyboard Interrupt..."
