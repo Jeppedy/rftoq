@@ -26,11 +26,16 @@ from nrf24 import NRF24
 #DEFAULT_API_KEY = "IjPjyGRBNX4215uvu7sAB86NBjCtklQByFAIb1VoJT2TUeXF"
 #DEFAULT_FEED_ID = "1785749146"
 
-Q_BROKER="m11.cloudmqtt.com"
-Q_PORT=19873
-Q_USER="prcegtgc"
-Q_PSWD="7frPa1U_VXqA"
+#Q_BROKER="m11.cloudmqtt.com"
+#Q_PORT=19873
+#Q_USER="prcegtgc"
+#Q_PSWD="7frPa1U_VXqA"
+Q_BROKER="127.0.0.1"
+Q_PORT=1883
 Q_TOPIC="hello"
+
+IsConnected=False
+IsCnxnErr=False
 
 ##  RF Read Code
 pipes = [[0xF0, 0xF0, 0xF0, 0xF0, 0xE1], [0xF0, 0xF0, 0xF0, 0xF0, 0xD1]]
@@ -69,23 +74,51 @@ def initRadioReceive():
     radio.startListening()
 
 def on_connect(client, userdata, flags, rc):
-    print("Connected with result code [%d]" % rc)
+    global IsConnected,IsCnxnErr
+    print("CB: Connected;rtn code [%d]"% (rc) )
+    if( rc == 0 ):
+        IsConnected=True
+    else:
+        IsCnxnErr=True
+
+def on_disconnect(client, userdata, rc):
+    global IsConnected
+    print("CB: Disconnected with rtn code [%d]"% (rc) )
+    IsConnected=False
 
 def on_publish(client,userdata,mid):
     print("Data Published, Msg ID: [%d]" % mid)
     pass
 
+def on_log(client, userdata, level, buf):
+    print("log: ",buf)
+
+
 # main program entry point - runs continuously updating our datastream with the
-def run():
+def run( client ):
 
   init_GPIO()
   initRadioReceive()
 
-  client = mqtt.Client("rftoq")
   client.on_publish = on_publish
   client.on_connect = on_connect
-  client.username_pw_set(Q_USER, Q_PSWD)
+  client.on_disconnect = on_disconnect
+#  client.on_log = on_log
+#  client.username_pw_set(Q_USER, Q_PSWD)
 
+  client.connect(Q_BROKER, Q_PORT, keepalive=60)
+  client.loop_start()
+
+  retry=0
+  while( (not IsConnected) and (not IsCnxnErr) and retry <= 10):
+      print("Waiting for Connect")
+      time.sleep(.05)
+      retry += 1
+  if( not IsConnected or IsCnxnErr ):
+      print("No connection could be established")
+      return
+
+  #while True and IsConnected:
   while True:
     pipe = [1]
     while( radio.available(pipe, False) ):
@@ -98,9 +131,9 @@ def run():
             recv_string += chr(x)
 	print "RF Msg received: [%s]" % recv_string
 
-        client.connect(Q_BROKER, Q_PORT, keepalive=60)
-        client.publish(Q_TOPIC,recv_string)
-        client.disconnect()
+        if( not IsConnected ):
+            print( "ERROR: RF Msg received; NO CONNECTION to queue" )
+        client.publish(Q_TOPIC,recv_string, 1)
 
     radio.startListening()
 
@@ -108,10 +141,19 @@ def run():
     time.sleep(SLEEP_SECONDS)
  
 try:
-    run()
+    client = mqtt.Client("rftoq")
+    run(client)
 except KeyboardInterrupt:
     print "Keyboard Interrupt..."
 finally:
     print "Exiting."
+
+    time.sleep(.25)
+    client.disconnect()
+    while( IsConnected ):
+        print("Waiting for Disconnect")
+        time.sleep(.05)
+    client.loop_stop()
+
     GPIO.cleanup()
 
