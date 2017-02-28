@@ -114,7 +114,6 @@ def run( client ):
       print("No connection could be established")
       return
 
-  #while True and IsConnected:
   while True:
     pipe = [1]
     while( radio.available(pipe, False) ):
@@ -130,7 +129,7 @@ def run( client ):
         if( not IsConnected ):
             print( "ERROR: RF Msg received; NO CONNECTION to queue" )
         else:
-            client.publish(Q_TOPIC,recv_string, 1)
+            client.publish(config.get("DEFAULT", 'topic'),recv_string, 1)
 
     radio.startListening()
 
