@@ -78,7 +78,8 @@ def on_disconnect(client, userdata, rc):
     IsConnected=False
 
 def on_publish(client,userdata,mid):
-    print("Data Published, Msg ID: [%d]" % mid)
+    if( getConfigExtBool(config, "DEFAULT", 'debug') ):
+        print("Data Published, Msg ID: [%d]" % mid)
     pass
 
 def on_log(client, userdata, level, buf):
