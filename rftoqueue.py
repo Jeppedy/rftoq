@@ -8,6 +8,8 @@
 import os
 import sys
 import time
+import re
+
 import RPi.GPIO as GPIO
 import paho.mqtt.client as mqtt
 import ConfigParser
@@ -126,11 +128,30 @@ def run( client ):
             recv_string += chr(x)
 	print "RF Msg received: [%s]" % recv_string
 
+        if( re.search('[^\x00-\x7F]', recv_string) is not None ):
+            print ("[%s] not ascii" % recv_string)
+            continue
+
+        if( len(recv_string)  < 18 ):
+            print ("[%s] is too short" % recv_string)
+            continue
+        else:
+            print ("long enough")
+
         if( not IsConnected ):
             print( "ERROR: RF Msg received; NO CONNECTION to queue" )
         else:
-            info=client.publish(config.get("DEFAULT", 'topic'), recv_string, qos=1)
-            info.wait_for_publish()
+            try:
+                info=client.publish(config.get("DEFAULT", 'topic'), recv_string, qos=1)
+                if( info[0] == mqtt.MQTT_ERR_SUCCESS ):
+                    info.wait_for_publish()
+                else:
+                    print( "ERROR: Publish call returned %d") % info[0]
+            except UnicodeDecodeError as err:
+                print "An exception occurred when publishing Q message [%s]" % recv_string
+                print "-----  BEGIN EXCEPTION TRACEBACK -----"
+                print err
+                print "-----  END EXCEPTION TRACEBACK -----"
 
     radio.startListening()
 
